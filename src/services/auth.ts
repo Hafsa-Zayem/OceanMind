@@ -1,4 +1,4 @@
-const BASE_URL = "http://192.168.11.114:8000"; // نفس IP ديالك
+import { BASE_URL } from "./config";
 
 export async function apiRegister(payload: {
   name: string;

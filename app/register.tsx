@@ -10,6 +10,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { KeyboardAvoidingView, Platform } from "react-native";
 
 // ✅ AuthContext
 import { useAuth } from "../src/auth/AuthContext";
@@ -59,6 +60,11 @@ export default function Register() {
       source={require("../src/assets/background.png")}
       style={styles.bg}
       resizeMode="cover"
+    >
+       <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
     >
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -225,7 +231,7 @@ export default function Register() {
                   email: email.trim(),
                   password,
                 });
-                router.replace("/home"); // ✅ كما قلتي
+                router.replace("/(tabs)/home"); // ✅ كما قلتي
               } catch (e) {
                 setErrors((prev) => ({
                   ...prev,
@@ -250,7 +256,8 @@ export default function Register() {
           </Pressable>
         </View>
       </ScrollView>
-    </ImageBackground>
+   </KeyboardAvoidingView> 
+   </ImageBackground>
   );
 }
 
@@ -259,7 +266,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 60,
-    paddingBottom: 40,
+    paddingBottom: 140,
   },
 
   logoBlock: {

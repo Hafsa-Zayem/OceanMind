@@ -1,26 +1,29 @@
-import { Stack } from "expo-router";
-import { View, ActivityIndicator } from "react-native";
+import React, { useEffect } from "react";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { AuthProvider, useAuth } from "../src/auth/AuthContext";
 
-function RootStack() {
-  const { ready, logged } = useAuth();
+function RootNav() {
+  const { logged, ready } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
 
-  // 👇 DEBUG
-  console.log("LOGGED =", logged);
-  console.log("AUTH STATE =>", { ready, logged });
+  useEffect(() => {
+    if (!ready) return;
 
+    const inTabs = segments[0] === "(tabs)";
 
-  if (!ready) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
+    // إلى ماشي logged وراه داخل tabs -> رجّعو للّوغين
+    if (!logged && inTabs) router.replace("/");
+
+    // إلى logged وراه فـ root (login/register) -> دخّلو للـ tabs/home
+    if (logged && !inTabs) router.replace("/(tabs)/home");
+  }, [logged, ready, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {logged ? <Stack.Screen name="(tabs)" /> : <Stack.Screen name="index" />}
+      <Stack.Screen name="index" />
+      <Stack.Screen name="register" />
+      <Stack.Screen name="(tabs)" />
     </Stack>
   );
 }
@@ -28,7 +31,7 @@ function RootStack() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootStack />
+      <RootNav />
     </AuthProvider>
   );
 }

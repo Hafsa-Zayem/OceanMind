@@ -7,7 +7,7 @@ export default function Community() {
   const router = useRouter();
 
   // يرجّعك للـ Home ديال tabs (index.tsx)
-  const goHome = () => router.replace("/(tabs)");
+  const goHome = () => router.replace("/(tabs)/home");
 
   return (
     <ImageBackground

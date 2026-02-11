@@ -52,7 +52,7 @@ export default function Profil() {
   };
 
   // ✅ رجوع مضمون لـ Accueil (بلا GO_BACK)
-  const goHome = () => router.replace("/home");
+  const goHome = () => router.replace("/(tabs)/home");
 
 
   // ✅ Logout via AuthContext

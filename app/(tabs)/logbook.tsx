@@ -13,7 +13,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 
-const BASE_URL = "http://192.168.11.114:8000"; // ✅ بدل IP ديال PC
+const BASE_URL = "http://192.168.1.100:8000"; // ✅ بدل IP ديال PC
 const TOKEN_KEY = "OCEANMIND_TOKEN";
 
 function Chip({ label, icon, active, onPress }: any) {

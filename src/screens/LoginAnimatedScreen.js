@@ -8,10 +8,11 @@ import {
   TextInput,
   Pressable,
   Animated,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
-
-// ✅ AuthContext
 import { useAuth } from "../auth/AuthContext";
 
 export default function LoginAnimatedScreen() {
@@ -39,7 +40,6 @@ export default function LoginAnimatedScreen() {
     return Object.keys(e).length === 0;
   };
 
-  // Anim values
   const logoY = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(1)).current;
   const cardY = useRef(new Animated.Value(-60)).current;
@@ -71,18 +71,11 @@ export default function LoginAnimatedScreen() {
     if (!validateLogin()) return;
 
     try {
-      // ✅ مسح أي خطأ قديم
       setErrors({});
-
       await login(email.trim(), password);
-
-      // ✅ دخل للـ tabs مباشرة (أأمن route)
-      router.replace("/(tabs)");
+      router.replace("/(tabs)/home");
     } catch (e) {
-      setErrors((prev) => ({
-        ...prev,
-        general: e?.message || "Login failed",
-      }));
+      setErrors((prev) => ({ ...prev, general: e?.message || "Login failed" }));
     }
   };
 
@@ -93,75 +86,96 @@ export default function LoginAnimatedScreen() {
         style={styles.bg}
         resizeMode="cover"
       >
-        <View style={styles.safe}>
-          {/* LOGO */}
-          <Animated.View
-            style={[
-              styles.logoBlock,
-              { transform: [{ translateY: logoTranslateY }, { scale: logoScale }] },
-            ]}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
+        >
+          <ScrollView
+            contentContainerStyle={styles.safe}
+            keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.logoWrapper}>
-              <Image source={require("../assets/logo.png")} style={styles.logo} resizeMode="contain" />
-            </View>
-          </Animated.View>
-
-          {/* CARD */}
-          <Animated.View
-            pointerEvents={opened ? "auto" : "none"}
-            style={[styles.card, { opacity: cardOpacity, transform: [{ translateY: cardY }] }]}
-          >
-            <Text style={styles.cardTitle}>Connexion</Text>
-
-            {!!errors.general && <Text style={styles.errorText}>{errors.general}</Text>}
-
-            <Text style={styles.label}>E-mail</Text>
-            <TextInput
-              value={email}
-              onChangeText={(t) => {
-                setEmail(t);
-                setErrors((p) => ({ ...p, email: undefined, general: undefined }));
-              }}
-              placeholder="votre.email@exemple.com"
-              placeholderTextColor="rgba(255,255,255,0.65)"
-              style={[styles.input, errors.email && styles.inputError]}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            {!!errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-
-            <Text style={[styles.label, { marginTop: 12 }]}>Mot de passe</Text>
-            <TextInput
-              value={password}
-              onChangeText={(t) => {
-                setPassword(t);
-                setErrors((p) => ({ ...p, password: undefined, general: undefined }));
-              }}
-              placeholder="********"
-              placeholderTextColor="rgba(255,255,255,0.65)"
-              style={[styles.input, errors.password && styles.inputError]}
-              secureTextEntry
-            />
-            {!!errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-
-            <Pressable
-              onPressIn={() => setPressed(true)}
-              onPressOut={() => setPressed(false)}
-              onPress={handleLogin}
+            {/* LOGO */}
+            <Animated.View
               style={[
-                styles.btn,
-                pressed && styles.btnPressed,
-                pressed && { transform: [{ scale: 1.06 }] },
+                styles.logoBlock,
+                { transform: [{ translateY: logoTranslateY }, { scale: logoScale }] },
               ]}
             >
-              <Text style={[styles.btnText, pressed && { color: "#fff" }]}>Se connecter</Text>
-            </Pressable>
+              <View style={styles.logoWrapper}>
+                <Image
+                  source={require("../assets/logo.png")}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
+            </Animated.View>
 
-            <Pressable style={styles.linkWrap} onPress={() => router.push("/register")}>
-              <Text style={styles.linkText}>Créer un compte</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
+            {/* CARD */}
+            <Animated.View
+              pointerEvents={opened ? "auto" : "none"}
+              style={[styles.card, { opacity: cardOpacity, transform: [{ translateY: cardY }] }]}
+            >
+              <Text style={styles.cardTitle}>Connexion</Text>
+
+              {!!errors.general && <Text style={styles.errorText}>{errors.general}</Text>}
+
+              <Text style={styles.label}>E-mail</Text>
+              <TextInput
+                value={email}
+                onChangeText={(t) => {
+                  setEmail(t);
+                  setErrors((p) => ({ ...p, email: undefined, general: undefined }));
+                }}
+                placeholder="votre.email@exemple.com"
+                placeholderTextColor="rgba(255,255,255,0.65)"
+                style={[styles.input, errors.email && styles.inputError]}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                returnKeyType="next"
+              />
+              {!!errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+
+              <Text style={[styles.label, { marginTop: 12 }]}>Mot de passe</Text>
+              <TextInput
+                value={password}
+                onChangeText={(t) => {
+                  setPassword(t);
+                  setErrors((p) => ({ ...p, password: undefined, general: undefined }));
+                }}
+                placeholder="********"
+                placeholderTextColor="rgba(255,255,255,0.65)"
+                style={[styles.input, errors.password && styles.inputError]}
+                secureTextEntry
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
+              />
+              {!!errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+
+              <Pressable
+                onPressIn={() => setPressed(true)}
+                onPressOut={() => setPressed(false)}
+                onPress={handleLogin}
+                style={[
+                  styles.btn,
+                  pressed && styles.btnPressed,
+                  pressed && { transform: [{ scale: 1.06 }] },
+                ]}
+              >
+                <Text style={[styles.btnText, pressed && { color: "#fff" }]}>
+                  Se connecter
+                </Text>
+              </Pressable>
+
+              <Pressable style={styles.linkWrap} onPress={() => router.push("/register")}>
+                <Text style={styles.linkText}>Créer un compte</Text>
+              </Pressable>
+            </Animated.View>
+
+            {/* مساحة تحت باش الكيبورد مايغطيش آخر حاجة */}
+            <View style={{ height: 30 }} />
+          </ScrollView>
+        </KeyboardAvoidingView>
       </ImageBackground>
     </Pressable>
   );
@@ -169,7 +183,7 @@ export default function LoginAnimatedScreen() {
 
 const styles = StyleSheet.create({
   bg: { flex: 1 },
-  safe: { flex: 1, paddingHorizontal: 20, justifyContent: "center" },
+  safe: { flexGrow: 1, paddingHorizontal: 20, justifyContent: "center" },
 
   logoBlock: { alignItems: "center", marginTop: 100 },
   logoWrapper: {

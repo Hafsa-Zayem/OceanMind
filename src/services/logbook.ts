@@ -1,5 +1,4 @@
-const BASE_URL = "http://192.168.11.114:8000"; // ⚠️ نفس IP اللي خدام به AI
-
+import { BASE_URL } from "./config";
 export type CapturePayload = {
   species: string;
   weightKg: number;

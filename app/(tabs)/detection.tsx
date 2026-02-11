@@ -32,7 +32,7 @@ export default function Detection() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/home");
+      router.replace("/(tabs)/home");
     }
   };
 
