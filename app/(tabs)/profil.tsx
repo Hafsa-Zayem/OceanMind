@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -11,9 +11,8 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-
-// ✅ NEW: AuthContext
 import { useAuth } from "../../src/auth/AuthContext";
+import { supabase } from "../../src/lib/supabaseClient";
 
 function RowNav({ icon, label, onPress }: any) {
   return (
@@ -37,9 +36,28 @@ function RowNav({ icon, label, onPress }: any) {
 
 export default function Profil() {
   const router = useRouter();
+  const { logout, user } = useAuth();
+  const [profile, setProfile] = useState<{ full_name: string | null; phone: string | null } | null>(null);
 
-  // ✅ Auth
-  const { logout } = useAuth();
+useEffect(() => {
+  if (!user?.id) return;
+
+  (async () => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("full_name, phone")
+      .eq("id", user.id)
+      .single();
+
+    if (error) {
+      console.log("profiles fetch error:", error.message);
+      setProfile(null);
+      return;
+    }
+
+    setProfile(data);
+  })();
+}, [user?.id]);
 
   const [lang, setLang] = useState<"Français" | "Arabe" | "Darija">("Français");
   const [voiceMode, setVoiceMode] = useState(true);
@@ -51,15 +69,18 @@ export default function Profil() {
     );
   };
 
-  // ✅ رجوع مضمون لـ Accueil (بلا GO_BACK)
   const goHome = () => router.replace("/(tabs)/home");
 
-
-  // ✅ Logout via AuthContext
   const handleLogout = async () => {
     await logout();
-    router.replace("/"); // 👈 ديال login فـ root
+    router.replace("/"); // login screen
   };
+
+  // ✅ fallback values (إلا ماكانش user لسبب ما)
+  const displayName = profile?.full_name || "Utilisateur";
+  const displayEmail = user?.email || "—";
+  const displayPhone = profile?.phone ? `+212 ${profile.phone}` : "—";
+  const displayCity = "—"; // حتى تزيد city فالbackend
 
   return (
     <ImageBackground
@@ -91,14 +112,15 @@ export default function Profil() {
             <Ionicons name="person-outline" size={34} color="#fff" />
           </View>
 
-          <Text style={styles.name}>ismail fake</Text>
+          <Text style={styles.name}>{displayName}</Text>
+
           <Text style={styles.city}>
             <Ionicons
               name="location-outline"
               size={14}
               color="rgba(255,255,255,0.75)"
             />{" "}
-            Larache
+            {displayCity}
           </Text>
         </View>
 
@@ -115,17 +137,17 @@ export default function Profil() {
 
           <View style={styles.fieldBox}>
             <Text style={styles.smallTopLabel}>Nom complet</Text>
-            <Text style={styles.smallValue}>ismail fake</Text>
+            <Text style={styles.smallValue}>{displayName}</Text>
           </View>
 
           <View style={styles.fieldBox}>
             <Text style={styles.smallTopLabel}>Numéro de téléphone</Text>
-            <Text style={styles.smallValue}>+212 6XX XX XX XX</Text>
+            <Text style={styles.smallValue}>{displayPhone}</Text>
           </View>
 
           <View style={styles.fieldBox}>
             <Text style={styles.smallTopLabel}>Adresse e-mail</Text>
-            <Text style={styles.smallValue}>ismail.fake@oceanmind.app</Text>
+            <Text style={styles.smallValue}>{displayEmail}</Text>
           </View>
         </View>
 
@@ -227,7 +249,7 @@ export default function Profil() {
           />
         </View>
 
-        {/* ✅ LOGOUT */}
+        {/* LOGOUT */}
         <Pressable
           onPress={handleLogout}
           style={({ pressed }) => [

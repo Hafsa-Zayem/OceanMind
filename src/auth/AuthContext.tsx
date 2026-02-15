@@ -1,81 +1,115 @@
 // src/auth/AuthContext.tsx
-import React, { createContext, useContext, useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
-// ✅ API services
-import { apiLogin, apiRegister } from "../services/auth";
+type User = {
+  id: string;
+  email: string;
+  //name?: string;
+  //phone?: string;
+};
+
+type RegisterPayload = {
+  name: string;
+  phone: string;
+  email: string;
+  password: string;
+};
 
 type AuthContextType = {
   ready: boolean;
   logged: boolean;
+  user: User | null;
+
   login: (email: string, password: string) => Promise<void>;
-  register: (payload: {
-    name: string;
-    phone: string;
-    email: string;
-    password: string;
-  }) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const KEY = "OCEANMIND_TOKEN";
-const USER_KEY = "OM_USER";
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
-  const [logged, setLogged] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
-  // ✅ Check token on app start
+  const logged = !!user;
+
+  // ✅ load session on app start + listen to auth changes
   useEffect(() => {
-    (async () => {
-      const token = await AsyncStorage.getItem(KEY);
-      setLogged(!!token);
-      setReady(true);
-    })();
+    // 1) initial session
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) console.warn("getSession error:", error.message);
+
+        const u = data.session?.user;
+        if (u) {
+          setUser({
+            id: u.id,
+            email: u.email ?? "",
+          });
+        } else {
+          setUser(null);
+        }
+      })
+      .finally(() => setReady(true));
+
+    // 2) subscribe to login/logout/refresh
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user;
+      if (u) {
+        setUser({
+          id: u.id,
+          email: u.email ?? "",
+        });
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
-  // ✅ LOGIN via API
   const login = async (email: string, password: string) => {
-    const data = await apiLogin({ email, password });
-    if (!data.ok) throw new Error(data.message);
-
-    await AsyncStorage.setItem(KEY, data.token);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
-    setLogged(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
+    // user state will update automatically via onAuthStateChange
   };
 
-  // ✅ REGISTER via API
-  const register = async (payload: {
-    name: string;
-    phone: string;
-    email: string;
-    password: string;
-  }) => {
-    const data = await apiRegister(payload);
-    if (!data.ok) throw new Error(data.message);
+  const register = async (payload: RegisterPayload) => {
+    const { name, phone, email, password } = payload;
 
-    await AsyncStorage.setItem(KEY, data.token);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
-    setLogged(true);
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) throw new Error(error.message);
+
+    // OPTIONAL (recommended): save name/phone into profiles table
+    // If you didn't create profiles table yet, you can remove this block.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const u = sessionData.session?.user;
+
+    if (u) {
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .upsert({ id: u.id, full_name: name, phone });
+
+      if (profileErr) throw new Error(profileErr.message);
+    }
   };
 
-  // ✅ LOGOUT
   const logout = async () => {
-    console.log("LOGOUT CALLED");
-    await AsyncStorage.removeItem(KEY);
-    await AsyncStorage.removeItem(USER_KEY);
-    setLogged(false);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw new Error(error.message);
+    // user state will become null via onAuthStateChange
   };
 
-  return (
-    <AuthContext.Provider
-      value={{ ready, logged, login, register, logout }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ ready, logged, user, login, register, logout }),
+    [ready, logged, user]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -10,11 +10,10 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 
-const BASE_URL = "http://192.168.1.100:8000"; // ✅ بدل IP ديال PC
-const TOKEN_KEY = "OCEANMIND_TOKEN";
+import { supabase } from "../../src/lib/supabaseClient";
+import { useAuth } from "../../src/auth/AuthContext";
 
 function Chip({ label, icon, active, onPress }: any) {
   return (
@@ -28,38 +27,80 @@ function Chip({ label, icon, active, onPress }: any) {
         },
       ]}
     >
-      <MaterialCommunityIcons name={icon} size={16} color="rgba(255,255,255,0.85)" />
+      <MaterialCommunityIcons
+        name={icon}
+        size={16}
+        color="rgba(255,255,255,0.85)"
+      />
       <Text style={styles.chipText}>{label}</Text>
     </Pressable>
   );
 }
 
+function formatDate(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD (simple MVP)
+}
+
+function formatTime(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 function EntryCard({ e }: any) {
+  const legal = e.ai_legal ?? true;
+
   return (
     <View style={styles.entryCard}>
       <View style={styles.entryTopRow}>
         <View>
-          <Text style={styles.entryDate}>{e.dateTitle || e.dateISO || "—"}</Text>
-          <Text style={styles.entryTime}>{e.time || e.timeStr || "—"}</Text>
+          <Text style={styles.entryDate}>{formatDate(e.captured_at)}</Text>
+          <Text style={styles.entryTime}>{formatTime(e.captured_at)}</Text>
         </View>
 
-        <View style={styles.legalBadge}>
-          <Ionicons name="checkmark-circle" size={16} color="#fff" />
-          <Text style={styles.legalText}>{e.legal ? "Légal" : "Interdit"}</Text>
+        <View
+          style={[
+            styles.legalBadge,
+            !legal && { backgroundColor: "rgba(239,68,68,0.85)" },
+          ]}
+        >
+          <Ionicons
+            name={legal ? "checkmark-circle" : "close-circle"}
+            size={16}
+            color="#fff"
+          />
+          <Text style={styles.legalText}>{legal ? "Légal" : "Interdit"}</Text>
         </View>
       </View>
+
+      {/* Photo */}
+      {e.photo_url ? (
+        <Image source={{ uri: e.photo_url }} style={styles.photo} />
+      ) : null}
 
       <View style={styles.line} />
 
       <View style={styles.rowInfo}>
-        <MaterialCommunityIcons name="fish" size={16} color="rgba(255,255,255,0.85)" />
+        <MaterialCommunityIcons
+          name="fish"
+          size={16}
+          color="rgba(255,255,255,0.85)"
+        />
         <Text style={styles.infoText}>
-          {e.species} ({e.weightKg} kg)
+          {e.species} ({e.weight_kg} kg)
         </Text>
       </View>
 
       <View style={styles.rowInfo}>
-        <Ionicons name="location-outline" size={16} color="rgba(255,255,255,0.85)" />
+        <Ionicons
+          name="location-outline"
+          size={16}
+          color="rgba(255,255,255,0.85)"
+        />
         <Text style={styles.infoText}>
           {e.city}, {e.zone}
         </Text>
@@ -70,51 +111,60 @@ function EntryCard({ e }: any) {
 
 export default function Logbook() {
   const router = useRouter();
-  const [filter, setFilter] = useState("Date");
+  const { user } = useAuth();
+
+  const [filter, setFilter] = useState<"Date" | "Espèce" | "Zone">("Date");
   const [entries, setEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-const loadEntries = useCallback(async () => {
-  try {
-    const token = await AsyncStorage.getItem(TOKEN_KEY);
-
-    console.log("LIST URL =>", `${BASE_URL}/logbook/list`);
-    console.log("LIST TOKEN =>", token ? "YES" : "NO");
-
-    const res = await fetch(`${BASE_URL}/logbook/list`, {
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
-
-    console.log("LIST STATUS =>", res.status);
-
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch (err) {
-      data = { ok: false, message: "Response is not JSON" };
-    }
-
-    console.log("LIST RAW =>", data);
-
-    if (!res.ok || !data?.ok) {
+  const loadEntries = useCallback(async () => {
+    if (!user?.id) {
       setEntries([]);
       return;
     }
 
-    setEntries(Array.isArray(data.items) ? data.items : []);
-  } catch (e: any) {
-    console.log("LIST ERROR =>", e?.message || e);
-    setEntries([]);
-  }
-}, []);
+    try {
+      setLoading(true);
 
+      // ✅ Fetch my captures from Supabase
+      const { data, error } = await supabase
+        .from("captures")
+        .select(
+          "id, species, weight_kg, size_cm, city, zone, captured_at, photo_url, ai_legal"
+        )
+        .eq("user_id", user.id)
+        .order("captured_at", { ascending: false });
+
+      if (error) {
+        console.log("CAPTURES LIST ERROR =>", error);
+        setEntries([]);
+        return;
+      }
+
+      setEntries(Array.isArray(data) ? data : []);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
       loadEntries();
     }, [loadEntries])
   );
+
+  // ✅ simple local sort/filter (MVP)
+  const filtered = useMemo(() => {
+    const arr = [...entries];
+    if (filter === "Espèce") {
+      arr.sort((a, b) => String(a.species).localeCompare(String(b.species)));
+    } else if (filter === "Zone") {
+      arr.sort((a, b) => String(a.zone).localeCompare(String(b.zone)));
+    } else {
+      // Date already sorted desc by query
+    }
+    return arr;
+  }, [entries, filter]);
 
   return (
     <ImageBackground
@@ -131,25 +181,53 @@ const loadEntries = useCallback(async () => {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={{ alignItems: "center" }}>
-          <Image source={require("../../src/assets/logo.png")} style={styles.logo} resizeMode="contain" />
+          <Image
+            source={require("../../src/assets/logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>Journal de Bord Numérique</Text>
         </View>
 
         <View style={styles.chipsRow}>
-          <Chip label="Date" icon="calendar-blank-outline" active={filter === "Date"} onPress={() => setFilter("Date")} />
-          <Chip label="Espèce" icon="fish" active={filter === "Espèce"} onPress={() => setFilter("Espèce")} />
-          <Chip label="Zone" icon="map-marker-radius-outline" active={filter === "Zone"} onPress={() => setFilter("Zone")} />
+          <Chip
+            label="Date"
+            icon="calendar-blank-outline"
+            active={filter === "Date"}
+            onPress={() => setFilter("Date")}
+          />
+          <Chip
+            label="Espèce"
+            icon="fish"
+            active={filter === "Espèce"}
+            onPress={() => setFilter("Espèce")}
+          />
+          <Chip
+            label="Zone"
+            icon="map-marker-radius-outline"
+            active={filter === "Zone"}
+            onPress={() => setFilter("Zone")}
+          />
         </View>
 
         <View style={{ marginTop: 14, gap: 12 }}>
-          {entries.length === 0 ? (
+          {loading ? (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>ماكايناش entries دابا. زيد وحدة من +</Text>
+              <Text style={styles.emptyText}>تحميل...</Text>
+            </View>
+          ) : filtered.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>
+                ماكايناش entries دابا. زيد وحدة من +
+              </Text>
             </View>
           ) : (
-            entries.map((e, idx) => <EntryCard key={e.id || idx} e={e} />)
+            filtered.map((e) => <EntryCard key={e.id} e={e} />)
           )}
         </View>
 
@@ -158,7 +236,10 @@ const loadEntries = useCallback(async () => {
 
       <Pressable
         onPress={() => router.push("/(tabs)/add-capture?from=logbook")}
-        style={({ pressed }) => [styles.fab, pressed && { transform: [{ scale: 0.98 }] }]}
+        style={({ pressed }) => [
+          styles.fab,
+          pressed && { transform: [{ scale: 0.98 }] },
+        ]}
       >
         <Ionicons name="add" size={26} color="#fff" />
       </Pressable>
@@ -168,7 +249,10 @@ const loadEntries = useCallback(async () => {
 
 const styles = StyleSheet.create({
   bg: { flex: 1 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10, 25, 45, 0.35)" },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(10, 25, 45, 0.35)",
+  },
 
   topBar: { paddingTop: 52, paddingHorizontal: 16 },
   backBtn: {
@@ -190,7 +274,12 @@ const styles = StyleSheet.create({
   logo: { width: 140, height: 140, marginBottom: 6 },
   title: { color: "#fff", fontSize: 16, fontWeight: "900", marginTop: 8 },
 
-  chipsRow: { marginTop: 14, flexDirection: "row", gap: 10, justifyContent: "center" },
+  chipsRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "center",
+  },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -211,9 +300,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
   },
-  entryTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  entryTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   entryDate: { color: "#fff", fontWeight: "900", fontSize: 13 },
-  entryTime: { marginTop: 6, color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 11 },
+  entryTime: {
+    marginTop: 6,
+    color: "rgba(255,255,255,0.75)",
+    fontWeight: "800",
+    fontSize: 11,
+  },
 
   legalBadge: {
     flexDirection: "row",
@@ -226,7 +324,14 @@ const styles = StyleSheet.create({
   },
   legalText: { color: "#fff", fontWeight: "900", fontSize: 12 },
 
-  line: { marginTop: 10, marginBottom: 10, height: 1, backgroundColor: "rgba(255,255,255,0.12)" },
+  photo: { marginTop: 12, width: "100%", height: 160, borderRadius: 14 },
+
+  line: {
+    marginTop: 10,
+    marginBottom: 10,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
 
   rowInfo: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   infoText: { color: "rgba(255,255,255,0.85)", fontWeight: "800", fontSize: 12 },
@@ -238,7 +343,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
   },
-  emptyText: { color: "rgba(255,255,255,0.8)", fontWeight: "800", textAlign: "center" },
+  emptyText: {
+    color: "rgba(255,255,255,0.8)",
+    fontWeight: "800",
+    textAlign: "center",
+  },
 
   fab: {
     position: "absolute",

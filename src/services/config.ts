@@ -1,6 +1,3 @@
-import { Platform } from "react-native";
-
-export const BASE_URL =
-  Platform.OS === "web"
-    ? "http://localhost:8000"
-    : "http://192.168.1.100:8000"; // حط IP ديال PC ديالك هنا
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL!;
+export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;

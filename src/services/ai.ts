@@ -1,6 +1,5 @@
 // src/services/ai.ts
-const BASE_URL = "http://192.168.11.114:8000"; // ⚠️ بدل IP ديالك هنا
-
+import { API_BASE_URL } from "./config";
 export type DetectResult = {
   species: string;
   sizeCm: number;
@@ -19,7 +18,7 @@ export async function detectFish(photoUri: string): Promise<DetectResult> {
     type: "image/jpeg",
   } as any);
 
-  const res = await fetch(`${BASE_URL}/ai/detect`, {
+  const res = await fetch(`${API_BASE_URL}/ai/detect`, {
     method: "POST",
     body: form,
   });

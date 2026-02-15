@@ -1,44 +1,45 @@
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
+  Alert,
+  Image,
   ImageBackground,
   Pressable,
   ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
-  Image,
-  Alert,
+  View,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
-const BASE_URL = "http://192.168.11.114:8000"; // ✅ بدل IP ديال PC
+import { useAuth } from "../../src/auth/AuthContext";
+import { createCapture, uploadCapturePhoto } from "../../src/services/captures";
 
 const SPECIES = ["Sardine", "Maquereau", "Dorade", "Anchois", "Thon"];
-const TOKEN_KEY = "OCEANMIND_TOKEN";
 
 export default function AddCapture() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { user } = useAuth();
 
   const [species, setSpecies] = useState((params.species as string) ?? "");
   const [showSpeciesList, setShowSpeciesList] = useState(false);
 
   const [qty, setQty] = useState((params.weightKg as string) ?? "");
   const [sizeCm, setSizeCm] = useState("");
-  const [zone, setZone] = useState((params.zone as string) ?? "Larache, Zone Nord");
+  const [zone, setZone] = useState(
+    (params.zone as string) ?? "Larache, Zone Nord",
+  );
 
   const [dateStr] = useState("2026-02-09"); // ✅ دابا ثابت (من بعد نزيدو date picker)
-  const [timeStr] = useState("11:39 PM");   // ✅ ثابت (من بعد نزيدو time picker)
+  const [timeStr] = useState("11:39 PM"); // ✅ ثابت (من بعد نزيدو time picker)
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
 
   const canSave = useMemo(
     () => species.trim().length > 0 && qty.trim().length > 0,
-    [species, qty]
+    [species, qty],
   );
 
   const pickPhoto = async () => {
@@ -55,68 +56,56 @@ export default function AddCapture() {
     if (!res.canceled) setPhotoUri(res.assets[0].uri);
   };
 
-const save = async () => {
-  if (!canSave) {
-    Alert.alert("Erreur", "عمر Espèce و Quantité.");
-    return;
-  }
-
-  const parts = zone.split(",");
-  const city = (parts[0] ?? "Larache").trim();
-  const zoneName = (parts[1] ?? "Zone Nord").trim();
-
-  const body = {
-    city,
-    zone: zoneName,
-    dateISO: dateStr,
-    timeStr: timeStr,
-    species: species.trim(),
-    weightKg: qty.trim(),
-    sizeCm: sizeCm ? sizeCm.trim() : null,
-    photoUri: photoUri ?? null,
-    legal: true,
-  };
-
-  try {
-    const token = await AsyncStorage.getItem(TOKEN_KEY);
-
-    // ✅ LOGS قبل fetch
-    console.log("ADD URL =>", `${BASE_URL}/logbook/add`);
-    console.log("ADD BODY =>", body);
-    console.log("ADD TOKEN =>", token ? "YES" : "NO");
-
-    const res = await fetch(`${BASE_URL}/logbook/add`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch (err) {
-      data = { ok: false, message: "Response is not JSON" };
-    }
-
-    // ✅ LOGS بعد fetch
-    console.log("ADD STATUS =>", res.status);
-    console.log("ADD RAW =>", data);
-
-    if (!res.ok || !data?.ok) {
-      Alert.alert("Erreur", data?.message || `Save failed (${res.status})`);
+  const save = async () => {
+    if (!canSave) {
+      Alert.alert("Erreur", "عمر Espèce و Quantité.");
       return;
     }
 
-    router.replace("/(tabs)/logbook");
-  } catch (e: any) {
-    console.log("ADD ERROR =>", e?.message || e);
-    Alert.alert("Erreur", "ماقدّرتش نرسل entry للسيرفر.");
-  }
-};
+    if (!user?.id) {
+      Alert.alert("Erreur", "خاصك تكون مسجّل الدخول.");
+      return;
+    }
 
+    const parts = zone.split(",");
+    const city = (parts[0] ?? "Larache").trim();
+    const zoneName = (parts[1] ?? "Zone Nord").trim();
+
+    // MVP: use current timestamp (later we add date/time picker properly)
+    const capturedAtISO = new Date().toISOString();
+
+    try {
+      let photo_path: string | null = null;
+      let photo_url: string | null = null;
+
+      // ✅ upload photo if exists
+      if (photoUri) {
+        const uploaded = await uploadCapturePhoto(user.id, photoUri);
+        photo_path = uploaded.filePath;
+        photo_url = uploaded.publicUrl;
+      }
+
+      await createCapture({
+        user_id: user.id,
+        species: species.trim(),
+        weight_kg: Number(qty),
+        size_cm: sizeCm ? Number(sizeCm) : null,
+        city,
+        zone: zoneName,
+        captured_at: capturedAtISO,
+        photo_path,
+        photo_url,
+
+        // optional for now
+        ai_legal: true,
+      });
+
+      Alert.alert("✅", "Entry enregistrée !");
+    } catch (e: any) {
+      console.log("SAVE CAPTURE ERROR FULL =>", e);
+      Alert.alert("Erreur", e?.message || JSON.stringify(e));
+    }
+  };
 
   return (
     <ImageBackground
@@ -133,22 +122,38 @@ const save = async () => {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={{ alignItems: "center" }}>
-          <Image source={require("../../src/assets/logo.png")} style={styles.logo} resizeMode="contain" />
+          <Image
+            source={require("../../src/assets/logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>Ajouter une entrée</Text>
         </View>
 
         <View style={styles.card}>
           {/* Espèce */}
           <Text style={styles.label}>
-            <MaterialCommunityIcons name="fish" size={14} color="#2dd4bf" /> Espèce{" "}
-            <Text style={{ color: "#fca5a5" }}>*</Text>
+            <MaterialCommunityIcons name="fish" size={14} color="#2dd4bf" />{" "}
+            Espèce <Text style={{ color: "#fca5a5" }}>*</Text>
           </Text>
 
-          <Pressable style={styles.select} onPress={() => setShowSpeciesList((v) => !v)}>
-            <Text style={styles.selectText}>{species ? species : "Sélectionner une espèce"}</Text>
-            <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.85)" />
+          <Pressable
+            style={styles.select}
+            onPress={() => setShowSpeciesList((v) => !v)}
+          >
+            <Text style={styles.selectText}>
+              {species ? species : "Sélectionner une espèce"}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={16}
+              color="rgba(255,255,255,0.85)"
+            />
           </Pressable>
 
           {showSpeciesList ? (
@@ -170,8 +175,8 @@ const save = async () => {
 
           {/* Quantité */}
           <Text style={[styles.label, { marginTop: 12 }]}>
-            <MaterialCommunityIcons name="scale" size={14} color="#93c5fd" /> Quantité (kg){" "}
-            <Text style={{ color: "#fca5a5" }}>*</Text>
+            <MaterialCommunityIcons name="scale" size={14} color="#93c5fd" />{" "}
+            Quantité (kg) <Text style={{ color: "#fca5a5" }}>*</Text>
           </Text>
           <TextInput
             value={qty}
@@ -184,8 +189,8 @@ const save = async () => {
 
           {/* Taille */}
           <Text style={[styles.label, { marginTop: 12 }]}>
-            <MaterialCommunityIcons name="ruler" size={14} color="#c084fc" /> Taille (cm){" "}
-            <Text style={styles.optional}>(optional)</Text>
+            <MaterialCommunityIcons name="ruler" size={14} color="#c084fc" />{" "}
+            Taille (cm) <Text style={styles.optional}>(optional)</Text>
           </Text>
           <TextInput
             value={sizeCm}
@@ -198,7 +203,8 @@ const save = async () => {
 
           {/* Zone */}
           <Text style={[styles.label, { marginTop: 12 }]}>
-            <Ionicons name="location-outline" size={14} color="#34d399" /> Zone de pêche
+            <Ionicons name="location-outline" size={14} color="#34d399" /> Zone
+            de pêche
           </Text>
           <View style={styles.select}>
             <Text style={styles.selectText}>{zone}</Text>
@@ -209,11 +215,16 @@ const save = async () => {
           <View style={styles.twoCols}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>
-                <Ionicons name="calendar-outline" size={14} color="#fbbf24" /> Date
+                <Ionicons name="calendar-outline" size={14} color="#fbbf24" />{" "}
+                Date
               </Text>
               <View style={styles.select}>
                 <Text style={styles.selectText}>{dateStr}</Text>
-                <Ionicons name="calendar" size={16} color="rgba(255,255,255,0.85)" />
+                <Ionicons
+                  name="calendar"
+                  size={16}
+                  color="rgba(255,255,255,0.85)"
+                />
               </View>
             </View>
 
@@ -223,7 +234,11 @@ const save = async () => {
               </Text>
               <View style={styles.select}>
                 <Text style={styles.selectText}>{timeStr}</Text>
-                <Ionicons name="time" size={16} color="rgba(255,255,255,0.85)" />
+                <Ionicons
+                  name="time"
+                  size={16}
+                  color="rgba(255,255,255,0.85)"
+                />
               </View>
             </View>
           </View>
@@ -238,7 +253,9 @@ const save = async () => {
             <Text style={styles.photoText}>Ajouter une photo</Text>
           </Pressable>
 
-          {photoUri ? <Image source={{ uri: photoUri }} style={styles.preview} /> : null}
+          {photoUri ? (
+            <Image source={{ uri: photoUri }} style={styles.preview} />
+          ) : null}
         </View>
 
         <Pressable
@@ -260,7 +277,10 @@ const save = async () => {
 
 const styles = StyleSheet.create({
   bg: { flex: 1 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10, 25, 45, 0.35)" },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(10, 25, 45, 0.35)",
+  },
 
   topBar: { paddingTop: 52, paddingHorizontal: 16 },
   backBtn: {
@@ -291,7 +311,12 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
   },
 
-  label: { color: "rgba(255,255,255,0.9)", fontWeight: "900", fontSize: 12, marginBottom: 8 },
+  label: {
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: "900",
+    fontSize: 12,
+    marginBottom: 8,
+  },
   optional: { color: "rgba(255,255,255,0.6)", fontWeight: "800" },
 
   input: {
