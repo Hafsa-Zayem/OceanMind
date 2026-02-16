@@ -23,23 +23,34 @@ export default function AddCapture() {
   const params = useLocalSearchParams();
   const { user } = useAuth();
 
+  // ✅ params from detection (optional)
+  const aiLegalParam = params.aiLegal as string | undefined;
+  const aiRuleParam = params.aiRule as string | undefined;
+  const aiConfidenceParam = params.aiConfidence as string | undefined;
+
+  const paramSizeCm = params.sizeCm as string | undefined;
+  const paramPhotoUri = params.photoUri as string | undefined;
+
   const [species, setSpecies] = useState((params.species as string) ?? "");
   const [showSpeciesList, setShowSpeciesList] = useState(false);
 
   const [qty, setQty] = useState((params.weightKg as string) ?? "");
-  const [sizeCm, setSizeCm] = useState("");
+  const [sizeCm, setSizeCm] = useState(paramSizeCm ?? "");
   const [zone, setZone] = useState(
-    (params.zone as string) ?? "Larache, Zone Nord",
+    (params.zone as string) ?? "Larache, Zone Nord"
   );
 
-  const [dateStr] = useState("2026-02-09"); // ✅ دابا ثابت (من بعد نزيدو date picker)
-  const [timeStr] = useState("11:39 PM"); // ✅ ثابت (من بعد نزيدو time picker)
+  const [dateStr] = useState("2026-02-09"); // MVP (later date picker)
+  const [timeStr] = useState("11:39 PM");   // MVP (later time picker)
 
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  // ✅ if came from detection, prefill photo
+  const [photoUri, setPhotoUri] = useState<string | null>(
+    paramPhotoUri ? String(paramPhotoUri) : null
+  );
 
   const canSave = useMemo(
     () => species.trim().length > 0 && qty.trim().length > 0,
-    [species, qty],
+    [species, qty]
   );
 
   const pickPhoto = async () => {
@@ -49,6 +60,7 @@ export default function AddCapture() {
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
+      // ✅ keep (warning فقط)
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
       allowsEditing: true,
@@ -71,8 +83,19 @@ export default function AddCapture() {
     const city = (parts[0] ?? "Larache").trim();
     const zoneName = (parts[1] ?? "Zone Nord").trim();
 
-    // MVP: use current timestamp (later we add date/time picker properly)
+    // MVP timestamp
     const capturedAtISO = new Date().toISOString();
+
+    // ✅ AI fields (safe parsing)
+    const ai_legal =
+      aiLegalParam != null ? String(aiLegalParam) === "true" : true;
+
+    const ai_rule = aiRuleParam ? String(aiRuleParam) : null;
+
+    const ai_confidence =
+      aiConfidenceParam && String(aiConfidenceParam).trim() !== ""
+        ? Number(aiConfidenceParam)
+        : null;
 
     try {
       let photo_path: string | null = null;
@@ -96,11 +119,14 @@ export default function AddCapture() {
         photo_path,
         photo_url,
 
-        // optional for now
-        ai_legal: true,
+        // ✅ AI result saved
+        ai_legal,
+        ai_rule,
+        ai_confidence,
       });
 
       Alert.alert("✅", "Entry enregistrée !");
+      router.replace("/(tabs)/logbook");
     } catch (e: any) {
       console.log("SAVE CAPTURE ERROR FULL =>", e);
       Alert.alert("Erreur", e?.message || JSON.stringify(e));
@@ -253,9 +279,7 @@ export default function AddCapture() {
             <Text style={styles.photoText}>Ajouter une photo</Text>
           </Pressable>
 
-          {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.preview} />
-          ) : null}
+          {photoUri ? <Image source={{ uri: photoUri }} style={styles.preview} /> : null}
         </View>
 
         <Pressable
@@ -277,10 +301,7 @@ export default function AddCapture() {
 
 const styles = StyleSheet.create({
   bg: { flex: 1 },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(10, 25, 45, 0.35)",
-  },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10, 25, 45, 0.35)" },
 
   topBar: { paddingTop: 52, paddingHorizontal: 16 },
   backBtn: {
@@ -311,12 +332,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
   },
 
-  label: {
-    color: "rgba(255,255,255,0.9)",
-    fontWeight: "900",
-    fontSize: 12,
-    marginBottom: 8,
-  },
+  label: { color: "rgba(255,255,255,0.9)", fontWeight: "900", fontSize: 12, marginBottom: 8 },
   optional: { color: "rgba(255,255,255,0.6)", fontWeight: "800" },
 
   input: {

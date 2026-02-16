@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 
-// ✅ NEW: AI service import
+// ✅ AI service
 import { detectFish, DetectResult } from "../../src/services/ai";
 
 type Step = "select" | "loading" | "result";
@@ -23,22 +23,16 @@ export default function Detection() {
 
   const [step, setStep] = useState<Step>("select");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-
-  // ✅ NEW: result state
   const [result, setResult] = useState<DetectResult | null>(null);
 
-  // ✅ زر رجوع ذكي
   const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(tabs)/home");
-    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/home");
   };
 
   const pickImage = async (fromCamera: boolean) => {
     try {
-      let result;
+      let pickRes: ImagePicker.ImagePickerResult;
 
       if (fromCamera) {
         const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -46,7 +40,7 @@ export default function Detection() {
           Alert.alert("Permission", "خصنا permission ديال الكاميرا.");
           return;
         }
-        result = await ImagePicker.launchCameraAsync({
+        pickRes = await ImagePicker.launchCameraAsync({
           quality: 0.8,
           allowsEditing: true,
         });
@@ -56,20 +50,22 @@ export default function Detection() {
           Alert.alert("Permission", "خصنا permission ديال الصور.");
           return;
         }
-        result = await ImagePicker.launchImageLibraryAsync({
+        pickRes = await ImagePicker.launchImageLibraryAsync({
+          // ✅ خليها هكا دابا (راه warning غير ديال deprecation)
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.8,
           allowsEditing: true,
         });
       }
 
-      if (!result.canceled) {
-        const uri = result.assets[0].uri;
+      if (!pickRes.canceled) {
+        const uri = pickRes.assets[0].uri;
         setPhotoUri(uri);
         setStep("loading");
 
         try {
-          const data = await detectFish(uri); // ✅ call حقيقي للسيرفر
+          const data = await detectFish(uri);
+          console.log("AI RESULT =>", data); // ✅ باش تشوف keys ديال confidence
           setResult(data);
           setStep("result");
         } catch (e) {
@@ -90,7 +86,6 @@ export default function Detection() {
     >
       <View style={styles.overlay} />
 
-      {/* TOP BAR */}
       <View style={styles.topBar}>
         <Pressable onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={18} color="#fff" />
@@ -98,7 +93,6 @@ export default function Detection() {
         </Pressable>
       </View>
 
-      {/* SELECT */}
       {step === "select" && (
         <View style={styles.center}>
           <Image
@@ -108,10 +102,9 @@ export default function Detection() {
           />
 
           <Text style={styles.title}>Détection des Poissons IA</Text>
-
           <Text style={styles.desc}>
-            Analyse photo du poisson pour déterminer l&apos;espèce, la taille et
-            la légalité de la pêche.
+            Analyse photo du poisson pour déterminer l'espèce, la taille et la
+            légalité.
           </Text>
 
           <View style={styles.card}>
@@ -128,7 +121,6 @@ export default function Detection() {
         </View>
       )}
 
-      {/* LOADING */}
       {step === "loading" && (
         <View style={styles.center}>
           <Image
@@ -136,26 +128,21 @@ export default function Detection() {
             style={styles.logoSmall}
             resizeMode="contain"
           />
-
           <Text style={styles.title}>Analyse en cours...</Text>
-
           <ActivityIndicator
             size="large"
             color="#2dd4bf"
             style={{ marginVertical: 20 }}
           />
-
           <Text style={styles.tip}>
-            Veuillez patienter pendant que l&apos;intelligence artificielle
-            analyse le poisson.
+            Veuillez patienter pendant que l'IA analyse le poisson.
           </Text>
         </View>
       )}
 
-      {/* RESULT */}
       {step === "result" && (
         <View style={styles.resultWrap}>
-          <Text style={styles.resultHeader}>Résultat de l&apos;analyse</Text>
+          <Text style={styles.resultHeader}>Résultat de l'analyse</Text>
 
           <Image
             source={
@@ -165,30 +152,24 @@ export default function Detection() {
             resizeMode="cover"
           />
 
-          {/* ✅ species */}
           <Text style={styles.fishName}>{result?.species ?? "—"}</Text>
 
           <View style={styles.row}>
             <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>Taille estimée</Text>
-
-              {/* ✅ size */}
               <Text style={styles.infoValue}>
-                {result ? `${result.sizeCm} cm` : "—"}
+                {result?.sizeCm != null ? `${result.sizeCm} cm` : "—"}
               </Text>
             </View>
 
             <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>Poids estimé</Text>
-
-              {/* ✅ weight */}
               <Text style={styles.infoValue}>
-                {result ? `${result.weightG} g` : "—"}
+                {result?.weightG != null ? `${result.weightG} g` : "—"}
               </Text>
             </View>
           </View>
 
-          {/* ✅ legal box dynamic */}
           <View
             style={[
               styles.legalBox,
@@ -209,16 +190,38 @@ export default function Detection() {
             </Text>
           </View>
 
-          {/* ✅ rule text */}
           <Text style={styles.ruleText}>{result?.rule ?? ""}</Text>
 
+          {/* ✅ PASS DATA TO add-capture SAFELY */}
           <Pressable
             style={styles.btnGreen}
-            onPress={() =>
-              router.push(
-                "/add-capture?from=detection&species=Sardine&weightKg=0.28&zone=Larache"
-              )
-            }
+            onPress={() => {
+              if (!result) return;
+
+              const weightKg =
+                result.weightG != null
+                  ? (result.weightG / 1000).toFixed(2)
+                  : "0";
+
+              const conf =
+                (result as any).confidence ??
+                (result as any).ai_confidence ??
+                (result as any).score ??
+                "";
+
+              const q =
+                `from=detection` +
+                `&species=${encodeURIComponent(result.species ?? "")}` +
+                `&weightKg=${encodeURIComponent(weightKg)}` +
+                `&sizeCm=${encodeURIComponent(String(result.sizeCm ?? ""))}` +
+                `&zone=${encodeURIComponent("Larache, Zone Nord")}` +
+                `&aiLegal=${encodeURIComponent(String(!!result.legal))}` +
+                `&aiRule=${encodeURIComponent(result.rule ?? "")}` +
+                `&aiConfidence=${encodeURIComponent(String(conf))}` +
+                `&photoUri=${encodeURIComponent(photoUri ?? "")}`;
+
+              router.push(`/(tabs)/add-capture?${q}`);
+            }}
           >
             <Text style={styles.btnText}>Ajouter au journal</Text>
           </Pressable>
@@ -251,24 +254,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-
-    // ✅ يخليها قد المحتوى
     width: "auto",
     maxWidth: "80%",
-
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 800,
-
     backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
-
-    // ✅ مهم باش ما تتمددش
     flexGrow: 0,
     flexShrink: 0,
+    gap: 6,
   },
-
   backText: {
     color: "#fff",
     fontWeight: "800",
@@ -276,18 +273,12 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
 
-  center: {
-    flex: 1,
-    paddingHorizontal: 22,
-    paddingTop: 18,
-    alignItems: "center",
-  },
+  center: { flex: 1, paddingHorizontal: 22, paddingTop: 18, alignItems: "center" },
 
   logo: { width: 170, height: 170, marginBottom: 6 },
   logoSmall: { width: 160, height: 160, marginBottom: 6 },
 
   title: { color: "#fff", fontSize: 20, fontWeight: "900", textAlign: "center" },
-
   desc: {
     marginTop: 10,
     color: "rgba(255,255,255,0.82)",
@@ -337,35 +328,13 @@ const styles = StyleSheet.create({
   },
   btnText: { color: "#fff", fontWeight: "900", fontSize: 13 },
 
-  tip: {
-    marginTop: 12,
-    color: "rgba(255,255,255,0.75)",
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "center",
-  },
+  tip: { marginTop: 12, color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "700", textAlign: "center" },
 
   resultWrap: { flex: 1, paddingHorizontal: 18, paddingTop: 14 },
-  resultHeader: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "900",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  resultImage: {
-    width: "100%",
-    height: 200,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.25)",
-  },
-  fishName: {
-    marginTop: 12,
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "900",
-    textAlign: "center",
-  },
+  resultHeader: { color: "#fff", fontSize: 18, fontWeight: "900", textAlign: "center", marginBottom: 12 },
+  resultImage: { width: "100%", height: 200, borderRadius: 16, backgroundColor: "rgba(0,0,0,0.25)" },
+
+  fishName: { marginTop: 12, color: "#fff", fontSize: 16, fontWeight: "900", textAlign: "center" },
 
   row: { flexDirection: "row", gap: 12, marginTop: 12 },
   infoBox: {
@@ -376,11 +345,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
   },
-  infoLabel: {
-    color: "rgba(255,255,255,0.75)",
-    fontWeight: "800",
-    fontSize: 11,
-  },
+  infoLabel: { color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 11 },
   infoValue: { marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 13 },
 
   legalBox: {
