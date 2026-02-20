@@ -1,3 +1,4 @@
+// src/services/captures.ts
 import { supabase } from "../lib/supabaseClient";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -8,7 +9,7 @@ function extFromUri(uri: string) {
   return ext || "jpg";
 }
 
-// تحويل base64 -> Uint8Array
+// base64 -> Uint8Array
 function base64ToUint8Array(base64: string) {
   const binary = atob(base64);
   const len = binary.length;
@@ -21,9 +22,8 @@ export async function uploadCapturePhoto(userId: string, uri: string) {
   const ext = extFromUri(uri);
   const filePath = `${userId}/${Date.now()}.${ext}`;
 
-  // اقرأ الملف base64 من الهاتف
   const base64 = await FileSystem.readAsStringAsync(uri, {
-  encoding: "base64" as any,
+    encoding: "base64" as any,
   });
 
   const bytes = base64ToUint8Array(base64);
@@ -35,7 +35,7 @@ export async function uploadCapturePhoto(userId: string, uri: string) {
       upsert: true,
     });
 
-  if (uploadError) throw uploadError;
+  if (uploadError) throw new Error(uploadError.message);
 
   const { data: pub } = supabase.storage.from("captures").getPublicUrl(data.path);
 
