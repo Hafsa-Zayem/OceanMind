@@ -17,6 +17,9 @@ import {
 import { useAuth } from "../../src/auth/AuthContext";
 import { createCapture, uploadCapturePhoto } from "../../src/services/captures";
 
+// ✅ NEW: AI detect
+import { detectFish } from "../../src/services/ai";
+
 const SPECIES = ["Sardine", "Maquereau", "Dorade", "Anchois", "Thon"];
 
 export default function AddCapture() {
@@ -57,7 +60,7 @@ export default function AddCapture() {
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // warning فقط
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
       allowsEditing: true,
     });
@@ -81,15 +84,42 @@ export default function AddCapture() {
 
     const capturedAtISO = new Date().toISOString();
 
-    const ai_legal = aiLegalParam != null ? String(aiLegalParam) === "true" : null;
-    const ai_rule = aiRuleParam ? String(aiRuleParam) : null;
+    // params القديمة (إلا كانو جايين من screen أخرى)
+    const ai_legal_param =
+      aiLegalParam != null ? String(aiLegalParam) === "true" : null;
+    const ai_rule_param = aiRuleParam ? String(aiRuleParam) : null;
 
-    const ai_confidence =
+    const ai_confidence_param =
       aiConfidenceParam && String(aiConfidenceParam).trim() !== ""
         ? Number(aiConfidenceParam)
         : null;
 
     try {
+      // ✅ STEP: AI detect (إلى كانت photo موجودة)
+      let ai_species: string | null = null;
+      let ai_common_name: string | null = null;
+      let ai_confidence: number | null = ai_confidence_param;
+      let ai_legal: boolean | null = ai_legal_param;
+      let ai_rule: string | null = ai_rule_param;
+
+      if (photoUri) {
+        const result = await detectFish(photoUri);
+        console.log("AI RESULT:", result);
+
+        // expected: { species, common_name, confidence, ... }
+        ai_species = result?.species ?? null;
+        ai_common_name = result?.common_name ?? null;
+        ai_confidence =
+          typeof result?.confidence === "number" ? result.confidence : ai_confidence;
+
+        // إلا بغيتي حتى تعمّر species أوتوماتيكياً (اختياري):
+        // if (!species.trim() && ai_common_name) setSpecies(ai_common_name);
+
+        // إلا detectFish كيرجع legal/rule فالمستقبل:
+        ai_legal = typeof result?.legal === "boolean" ? result.legal : ai_legal;
+        ai_rule = typeof result?.rule === "string" ? result.rule : ai_rule;
+      }
+
       let photo_path: string | null = null;
       let photo_url: string | null = null;
 
@@ -109,9 +139,15 @@ export default function AddCapture() {
         captured_at: capturedAtISO,
         photo_path,
         photo_url,
+
+        // ✅ keep existing fields
         ai_legal,
         ai_rule,
         ai_confidence,
+
+        // ✅ optional extra fields (غير إذا createCapture/schema كيدعموهم)
+        // ai_species,
+        // ai_common_name,
       });
 
       Alert.alert("✅", "Entry enregistrée !");
@@ -141,7 +177,7 @@ export default function AddCapture() {
         <View style={{ alignItems: "center" }}>
           <Image source={require("../../src/assets/logo.png")} style={styles.logo} resizeMode="contain" />
           <Text style={styles.title}>Ajouter une entrée</Text>
-        </View>  
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.label}>

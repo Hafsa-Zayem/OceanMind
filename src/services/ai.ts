@@ -4,6 +4,8 @@ import Constants from "expo-constants";
 
 export type DetectResult = {
   species?: string;
+  common_name?: string;   // ✅ زِد هادي
+  code?: string; 
   sizeCm?: number;
   weightG?: number;
   legal?: boolean;
@@ -45,7 +47,7 @@ export async function detectFish(photoUri: string): Promise<DetectResult> {
   const url = `${API_BASE_URL}/ai/detect`;
 
   const form = new FormData();
-  form.append("file", {
+  form.append("image", {
     uri: photoUri,
     name: "photo.jpg",
     type: "image/jpeg",
